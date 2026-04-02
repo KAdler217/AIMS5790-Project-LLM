@@ -1,0 +1,61 @@
+# LLM Predictor Configuration
+# SiliconFlow API with DeepSeek-V3.2
+
+# API Configuration
+api:
+  provider: "siliconflow"
+  model: "deepseek-ai/DeepSeek-V3.2"
+  # Set API key via environment variable: SILICONFLOW_API_KEY
+  # Or specify here (not recommended for security):
+  # api_key: "your-api-key-here"
+  base_url: "https://api.siliconflow.cn/v1"
+  timeout: 60
+  max_retries: 3
+  retry_delay: 1.0
+
+# Prediction Configuration
+prediction:
+  # Classification threshold (0.0 - 1.0)
+  threshold: 0.5
+  
+  # Validation window for delay evaluation (days)
+  validation_window: 30
+  
+  # Enable delay evaluation
+  bl_delay: true
+  
+  # Regression mode (predict days until failure)
+  bl_regression: false
+
+# Data Processing
+data:
+  # Batch size for API calls (number of disks per request)
+  batch_size: 10
+  
+  # Maximum batch size for single API call (don't change unless necessary)
+  max_batch_size: 20
+  
+  # Enable data compression
+  use_compression: true
+  
+  # Compression method: gzip, zlib, none
+  compression_method: "gzip"
+  
+  # Compression level (1-9)
+  compression_level: 6
+
+# Paths
+paths:
+  # Input paths (set by command line or script)
+  train_path: "./train/"
+  test_path: "./test/"
+  
+  # Output paths
+  output_dir: "./llm_output/"
+  log_dir: "./llm_logs/"
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(levelname)s - %(message)s"
+  file: "llm_predictor.log"
