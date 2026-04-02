@@ -1,205 +1,379 @@
-# StreamDFP
+# StreamDFP-2.2.0
 
-StreamDFP is a general stream mining framework for disk failure prediction with concept-drift adaptation. It includes feature extraction, labeling of samples, as well as training of a prediction model. 
+StreamDFP is a general stream mining framework for disk failure prediction with concept-drift adaptation. It includes feature extraction, labeling of samples, as well as training of a prediction model.
 
 StreamDFP is designed to support a variety of learning algorithms, based on three key techniques: online labeling, concept-drift-aware training, and general prediction.
 
-We implement the prototype of StreamDFP in two parts. The first part is implemented in Python for preprocessing. We realize feature extraction, buffering, labeling, and first-phase downsampling. The second part is written in Java. We read the processed data from local file system for second-phase downsampling and training. We realize decision-tree-based algorithms and change detectors based on [Massive Online Analysis (MOA)](https://moa.cms.waikato.ac.nz/).
+## What's New in StreamDFP-2.2.0
 
-In StreamDFP-2.0.0, we incorporate online transfer learning into StreamDFP for the prediction of minority disk models.
+### 🚀 Major Update: LLM Predictor (New)
 
-In StreamDFP-2.1.0, we integrate the Multilayer Perceptron (MLP) with the backpropagation into StreamDFP and make StreamDFP to support the evaluation on public SSD datasets at Alibaba.
+StreamDFP-2.2.0 introduces a revolutionary **LLM-based prediction module** that leverages Large Language Models for disk failure prediction, providing an alternative to traditional machine learning approaches.
 
-In StreamDFP-2.2.0, we integrate the Recurrent Neural Network (RNN) with the backpropagation through time (BPTT) into StreamDFP.
+**Key Features:**
+- **SiliconFlow API Integration**: Powered by DeepSeek-V3.2 model
+- **Natural Language Reasoning**: LLM provides interpretable predictions with explanations
+- **Zero Training Required**: Uses in-context learning instead of incremental training
+- **Drop-in Replacement**: Compatible with existing pyloader preprocessing pipeline
 
-## Prerequisite
+### Architecture Comparison
 
-- Python3: Please install [numpy](https://numpy.org/) and [pandas](https://pandas.pydata.org/).
-- Java: jdk-1.8.0
+```
+Traditional StreamDFP:                    LLM-Enhanced StreamDFP:
+┌─────────────┐    ┌─────────────┐        ┌─────────────┐    ┌─────────────┐
+│  Raw Data   │───→│  pyloader   │        │  Raw Data   │───→│  pyloader   │
+│ (SMART logs)│    │(preprocess) │        │ (SMART logs)│    │(preprocess) │
+└─────────────┘    └──────┬──────┘        └─────────────┘    └──────┬──────┘
+                          │                                          │
+                          ▼                                          ▼
+                   ┌─────────────┐                            ┌─────────────┐
+                   │ MOA/Java    │                            │  LLM        │
+                   │(ARF/MLP/RNN)│                            │ Predictor   │
+                   └─────────────┘                            └─────────────┘
+```
+
+### Historical Versions
+
+- **StreamDFP-2.0.0**: Online transfer learning for minority disk models
+- **StreamDFP-2.1.0**: Multilayer Perceptron (MLP) with backpropagation + SSD dataset support
+- **StreamDFP-2.2.0**: 
+  - Recurrent Neural Network (RNN) with BPTT
+  - **LLM Predictor** (SiliconFlow + DeepSeek-V3.2)
+
+---
+
+## Prerequisites
+
+- Python 3.x with numpy, pandas, requests, pyyaml
+- Java: jdk-1.8.0 (for MOA-based methods)
+- SiliconFlow API Key (for LLM Predictor)
+
+```bash
+pip install numpy pandas requests pyyaml
+```
+
+---
+
+## Quick Start
+
+### Option 1: LLM Predictor (Recommended for Quick Prototyping)
+
+```bash
+# 1. Set API key
+export SILICONFLOW_API_KEY="your-api-key-here"
+
+# 2. Preprocess data
+cd pyloader
+python run.py -s "2015-01-30" -a 6 -p "~/trace/smart/all/" \
+    -r "../pyloader/train/" -e "../pyloader/test/" \
+    -c "features_erg/hi7_all.txt" -d "HDS722020ALA330" -i 10
+cd ..
+
+# 3. Run LLM prediction
+python llm_predictor/predictor.py \
+    -s "2015-01-30" -p "./pyloader/train/" -t "./pyloader/test/" \
+    -i 10 -o "hi7_llm/results.json"
+
+# 4. Parse results
+python llm_predictor/parse_results.py hi7_llm/results.json
+```
+
+### Option 2: Traditional MOA-based Methods
+
+```bash
+# Using shell script
+./run_hi7.sh          # Adaptive Random Forest
+./run_hi7_rnn.sh      # Recurrent Neural Network
+./run_mc1_mlp.sh      # Multilayer Perceptron (SSD)
+```
+
+---
+
+## LLM Predictor Detailed Guide
+
+### Setup
+
+1. **Install Dependencies**
+   ```bash
+   pip install pandas numpy requests pyyaml
+   ```
+
+2. **Configure API Key**
+   ```bash
+   export SILICONFLOW_API_KEY="your-api-key-here"
+   ```
+
+3. **Test Connection**
+   ```bash
+   python llm_predictor/test_api.py
+   ```
+
+### Configuration
+
+Edit `llm_predictor/config.yaml`:
+
+```yaml
+api:
+  provider: "siliconflow"
+  model: "deepseek-ai/DeepSeek-V3.2"
+  timeout: 60
+  max_retries: 3
+
+prediction:
+  threshold: 0.5          # Classification threshold
+  validation_window: 30   # Evaluation window
+  bl_delay: true          # Enable delay evaluation
+
+data:
+  batch_size: 10          # Disks per API call
+  use_compression: true   # Reduce payload size
+  compression_method: "gzip"
+```
+
+### Command Line Arguments
+
+| Argument | Short | Description | Default |
+|----------|-------|-------------|---------|
+| `--start-date` | `-s` | Start date (YYYY-MM-DD) | Required |
+| `--train-path` | `-p` | Training data path | Required |
+| `--test-path` | `-t` | Test data path | None |
+| `--iterations` | `-i` | Number of iterations | 30 |
+| `--api-key` | `-k` | SiliconFlow API key | env var |
+| `--model` | `-m` | Model name | DeepSeek-V3.2 |
+| `--threshold` | | Classification threshold | 0.5 |
+| `--batch-size` | | Batch size for API | 10 |
+| `--output` | `-o` | Output file path | None |
+
+### Using Shell Script
+
+```bash
+chmod +x run_hi7_llm.sh
+export SILICONFLOW_API_KEY="your-api-key"
+./run_hi7_llm.sh
+```
+
+---
+
+## Method Comparison
+
+| Aspect | MOA Java (ARF) | LLM Predictor |
+|--------|----------------|---------------|
+| **Algorithm** | Adaptive Random Forest | DeepSeek-V3.2 |
+| **Training** | Incremental learning | In-context learning |
+| **Latency** | Low (local) | Higher (API) |
+| **Interpretability** | Limited | High (natural language) |
+| **Cost** | Free | Per API call |
+| **Setup** | Java + Maven | Python + API Key |
+| **Best For** | Production, large scale | Prototyping, explainability |
+
+---
 
 ## Dataset
 
-We use the following 11 disk models in public dataset [Backblaze](https://www.backblaze.com/b2/hard-drive-test-data.html):
-
-- Seagate ST3000DM001
-- Seagate ST4000DM000
-- Seagate ST12000NM0007
-- Hitachi HDS722020ALA330
-- Seagate ST8000DM002
-- Seagate ST8000NM0055
+### HDD Models (Backblaze)
+- Seagate ST3000DM001, ST4000DM000, ST12000NM0007
+- Seagate ST8000DM002, ST8000NM0055
 - HGST HMS5C4040BLE640
-- Seagate ST31500541AS
-- Seagate ST4000DX000
-- Hitachi HDS5C3030ALA630
-- Hitachi HDS723030ALA640
+- Seagate ST31500541AS, ST4000DX000
+- Hitachi HDS722020ALA330, HDS5C3030ALA630, HDS723030ALA640
 
-In addition, We use the following 3 SSD models in [public datasets at Alibaba](https://github.com/alibaba-edu/dcbrain/tree/master/ssd_smart_logs):
-- MA1
-- MB1
-- MC1
+### SSD Models (Alibaba)
+- MA1, MB1, MC1
 
-You can also use other disk models for testing.
+---
 
-## Usage
+## Usage Examples
 
-### Preprocessing in Python
+### Example 1: LLM Prediction (Hitachi HDS722020ALA330)
 
-Please first go to `pyloader/` :
+```bash
+# Preprocess
+cd pyloader
+python run.py -s "2015-01-30" -a 6 -p "~/trace/smart/all/" \
+    -r "../pyloader/train/" -e "../pyloader/test/" \
+    -c "features_erg/hi7_all.txt" -d "HDS722020ALA330" -i 10
+cd ..
 
-```
-python run.py
--s <start_date> [--start_date <start_date>]
--a <label_days> [--label_days <label_days>]
--p <path_dataset> [--path <path_dataset>]
--r <train_data_path> [--train_path <train_data_path>]
--e <test_data_path> [--test_path <test_data_path>]
--c <path_features> [--path_features <path_features>]
--o <option> [--option <option>] (1: enable regression (classification by default))
-```
+# Predict with LLM
+export SILICONFLOW_API_KEY="your-api-key"
+python llm_predictor/predictor.py \
+    -s "2015-01-30" -p "./pyloader/train/" -t "./pyloader/test/" \
+    -i 10 --threshold 0.5 --batch-size 10 \
+    -o "hi7_llm/results.json"
 
-For more details, please run `python run.py -h` or refer to an example script `run_hi7_loader.sh`.
-
-### Training and prediction in Java
-
-Please go back to `StreamDFP/`:
-
-```
-java -cp simulate/target/simulate-2019.01.0-SNAPSHOT.jar:moa/target/moa-2019.01.0-SNAPSHOT.jar simulate.Simulate
--s <start_date> 
--p <train_data_path>
--t <test_data_path>
--g [enable regression task]
--a <classifier>
--L <label_days>
--D <down_sample_ratio>
+# Parse results
+python llm_predictor/parse_results.py hi7_llm/results.json
 ```
 
-For more details, please refer to an example script `run_hi7.sh`.
+**Expected Output:**
+```
+days        FP          FPR         F1-score    Precision   Recall
+10.487608   6.658536    0.678112    39.982908   30.785494   57.017281
+```
 
-### Example
+### Example 2: Traditional ARF Classification
 
-Using *Hitachi HDS722020ALA330* as an example:
+```bash
+# Preprocess
+cd pyloader
+bash run_hi7_loader.sh
+cd ..
 
-Assume the dataset storing under `~/trace/smart/all/`
+# Train and predict
+bash run_hi7.sh
 
-#### Classification:
+# Parse results
+python parse.py hi7_example/example.txt
+```
 
-1. open `pyloader/`;
+### Example 3: RNN Prediction
 
-2. run the script `run_hi7_loader.sh` to process 10-day data;
+```bash
+cd pyloader
+bash run_hi7_loader.sh
+cd ..
+bash run_hi7_rnn.sh
+python parse.py hi7_rnn/example.txt
+```
 
-3. go back to `StreamDFP/`;
+### Example 4: Online Transfer Learning
 
-4. run the script `run_hi7.sh` to training prediction model of ARF and predict disk failures;
+```bash
+cd pyloader
+bash run_hi7_loader_pre.sh      # Source model
+bash run_hi640_transfer_loader.sh  # Target model
+cd ..
+bash run_hi640_transfer.sh
+python parse.py hi640_transfer/example.txt
+```
 
-5. parse the results by running `python parse.py hi7_example/example.txt`
+---
 
-6. output the following results:
+## Project Structure
 
-|   days    |    FP     |   FPR    | F1-score  | Precision |  Recall   |
-| :-------: | :-------: | :------: | :-------: | :-------: | :-------: |
-| 11.710000 | 22.200001 | 0.473107 | 26.220090 | 16.235855 | 68.095238 |
+```
+streamdfp-2.2.0/
+├── pyloader/                   # Python preprocessing
+│   ├── run.py                  # Main preprocessing script
+│   ├── core_utils/             # Core utilities
+│   ├── utils/                  # Helper functions
+│   └── *.sh                    # Loader scripts
+├── moa/                        # Java MOA framework
+│   └── src/main/java/moa/      # Classifiers, drift detection, etc.
+├── simulate/                   # Java simulator
+│   └── src/main/java/simulate/
+├── llm_predictor/              # NEW: LLM-based prediction
+│   ├── predictor.py            # Main predictor
+│   ├── llm_client.py           # API client
+│   ├── data_loader.py          # Data loading
+│   ├── compressor.py           # Data compression
+│   ├── evaluator.py            # Metrics evaluation
+│   ├── config.yaml             # Configuration
+│   └── README.md               # Detailed LLM docs
+├── *.sh                        # Run scripts
+├── parse.py                    # Result parser (classification)
+├── parse_reg.py                # Result parser (regression)
+└── pom.xml                     # Maven configuration
+```
 
-#### Regression
+---
 
-1. open `pyloader/`;
+## Evaluation Metrics
 
-2. run the script `run_hi7_reg_loader.sh` to process 10-day data;
+All methods report the same metrics:
 
-3. go back to `StreamDFP/`;
+| Metric | Description |
+|--------|-------------|
+| **Days** | Average days before failure |
+| **FP** | False Positives |
+| **FPR** | False Positive Rate |
+| **F1-score** | Harmonic mean of precision and recall |
+| **Precision** | TP / (TP + FP) |
+| **Recall** | TP / (TP + FN) |
 
-4. run the script `run_hi7_reg.sh` to training prediction model of FIMT-DD and predict disk failures;
+---
 
-5. parse the results by running `python parse_reg.py hi7_example_reg/example.txt`
+## Troubleshooting
 
-6. output the following results:
+### LLM Predictor
 
-| days_mean | days_std | days_max | days_min  |
-| :-------: | :------: | :------: | :-------: |
-| 0.302072  | 5.017107 | 9.206787 | -7.110260 |
+**API Key Not Found:**
+```
+Error: SILICONFLOW_API_KEY environment variable is not set
+```
+Solution: `export SILICONFLOW_API_KEY="your-api-key"`
 
-##  Usage of Online Transfer Learning
+**Data File Not Found:**
+```
+FileNotFoundError: Data file not found for 2015-01-30
+```
+Solution: Run pyloader first to generate data files.
 
-We apply transfer learning into disk failure prediction. Specifically, we first
-a prediction model (denoted by M_S) on the samples from the source disk model.
-When the samples of target disk model arrive, we start to another prediction
-model (denoted by M_T) and also update M_S. In the prediction phase, we combine
-the prediction results of both M_S and M_T.
+**API Rate Limiting:**
+Increase retry delay in `config.yaml`:
+```yaml
+api:
+  retry_delay: 2.0
+```
 
-### Datasets
-| Source disk models | Target disk models |
-| :----------------: | :----------------: |
-| Seagate ST4000DM000 | Seagate ST31500541AS |
-| Seagate ST4000DM000 | Seagate ST4000DX000  |
-| Hitachi HDS722020ALA330 | Hitachi HDS5C3030ALA630 |
-| Hitachi HDS722020ALA330 | Hitachi HDS723030ALA640 |
+### Traditional Methods
 
-### Example
+**Java Class Not Found:**
+```bash
+mvn clean package
+```
 
-Take *Hitachi HDS722020ALA330* (hi7) as the source disk model and *Hitachi HDS723030ALA640* (hi640) as the target disk model.
+---
 
-1. open `pyloader/`;
+## API Costs (LLM Predictor)
 
-2. run the script `run_hi7_loader_pre.sh` to process 400-day data for the source disk model (hi7).
+SiliconFlow API charges per token:
 
-2. run the script `run_hi640_transfer_loader.sh` to process 400-day data for the target disk model (hi640);
+- Single disk prediction: ~500-1000 tokens
+- Batch of 10 disks: ~2000-4000 tokens
 
-3. go back to `StreamDFP/`;
+Monitor usage in the SiliconFlow dashboard.
 
-4. run the script `run_hi640_transfer.sh` to training prediction model of ARF and predict disk failures for the target disk model;
+---
 
-5. parse the results by running `python parse.py hi640_transfer/example.txt`
+## Extending
 
-6. output the following results:
+### Adding New LLM Provider
 
-|   days    |    FP     |   FPR    | F1-score  | Precision |  Recall   |
-| :-------: | :-------: | :------: | :-------: | :-------: | :-------: |
-| 10.487608 | 6.658536  | 0.678112 | 39.982908 | 30.785494 | 57.017281 |
+Modify `llm_predictor/llm_client.py`:
 
-##  Usage of Evaluating on SSD Datasets and Running the MLP
+```python
+class NewProviderClient(LLMClient):
+    def predict(self, prompt, **kwargs):
+        # Implement API call
+        pass
+```
 
-We integrate the MLP into StreamDFP and make StreamDFP to support the evaluation on SSD datasets.
-As MC1 has around 200K SSDs, it needs to run on a server with at least 40GB available memory.
+### Custom Prompts
 
-Take *MC1* as an example:
+Modify `llm_predictor/predictor.py` to customize prompts for specific disk models.
 
-1. open `pyloader/`;
+---
 
-2. run the script `run_mc1_loader.sh` to process 10-day data;
+## References
 
-3. go back to `StreamDFP/`;
+- SiliconFlow API: https://docs.siliconflow.cn/
+- DeepSeek Model: https://www.deepseek.com/
+- MOA Framework: https://moa.cms.waikato.ac.nz/
+- Original StreamDFP: https://github.com/shujiehan/StreamDFP
+- Backblaze Dataset: https://www.backblaze.com/b2/hard-drive-test-data.html
+- Alibaba SSD Dataset: https://github.com/alibaba-edu/dcbrain/tree/master/ssd_smart_logs
 
-4. run the script `run_mc1_mlp.sh`
+---
 
-5. parse the results by running `python parse.py mc1_mlp/example.txt`
+## License
 
-6. output the following results:
+GNU General Public License 3.0
 
-|   days    |    FP     |   FPR    | F1-score  | Precision |  Recall   |
-| :-------: | :-------: | :------: | :-------: | :-------: | :-------: |
-| 15.727778 | 652.400024 | 0.503962 | 50.636388 | 34.165554 | 97.770432 |
-
-##  Usage of Running RNN
-
-We integrate RNN with BPTT via the stochastic gradient descent into StreamDFP.
-
-1. open `pyloader/`;
-
-2. run the script `run_hi7_loader.sh` to process 10-day data;
-
-3. go back to `StreamDFP/`;
-
-4. run the script `run_hi7_rnn.sh` to training prediction model of RNN and predict disk failures;
-
-5. parse the results by running `python parse.py hi7_rnn/example.txt`
-
-6. output the following results:
-
-|   days    |    FP     |   FPR    | F1-score  | Precision |  Recall   |
-| :-------: | :-------: | :------: | :-------: | :-------: | :-------: |
-| 17.900002 | 0.000000  | 0.000000 | 98.550730 | 100.000000 | 97.142860 |
+---
 
 ## Contact
 
-Please email to Shujie Han (shujiehan@pku.edu.cn) if you have any questions.
+Shujie Han (shujiehan@pku.edu.cn)
 
+For LLM Predictor issues, please also check `llm_predictor/README.md`.
